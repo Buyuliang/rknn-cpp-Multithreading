@@ -5,6 +5,8 @@
 
 #include "opencv2/core/core.hpp"
 
+#include "sort.h"
+
 static void dump_tensor_attr(rknn_tensor_attr *attr);
 static unsigned char *load_data(FILE *fp, size_t ofst, size_t sz);
 static unsigned char *load_model(const char *filename, int *model_size);
@@ -17,6 +19,7 @@ private:
     std::mutex mtx;
     std::string model_path;
     unsigned char *model_data;
+    // TrackingSession *sess;
 
     rknn_context ctx;
     rknn_input_output_num io_num;

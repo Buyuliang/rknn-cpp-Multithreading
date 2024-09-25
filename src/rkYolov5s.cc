@@ -12,6 +12,30 @@
 #include "coreNum.hpp"
 #include "rkYolov5s.hpp"
 
+#include "sort.h"
+
+#include <queue>
+#include <vector>
+#include <iostream>
+#include <map>
+#include <set>
+
+const int LINE_Y = 300; // 越线的 Y 坐标
+int count_up = 0;       // 上行计数
+int count_down = 0;     // 下行计数
+int per_num = 0;     // 下行计数
+
+std::vector<int> previous_ids; // 存储上一帧的 ID
+std::set<int> crossed_ids;
+std::set<int> crossed_up;   // 记录越线向上状态的 ID
+std::set<int> crossed_down; // 记录越线向下状态的 ID
+std::map<int, int> previous_y_positions;
+
+bool isPointInsideRectangle(const cv::Rect& rect, const cv::Point& point) {
+    return (point.x >= rect.x && point.x <= (rect.x + rect.width) &&
+            point.y >= rect.y && point.y <= (rect.y + rect.height));
+}
+
 static void dump_tensor_attr(rknn_tensor_attr *attr)
 {
     std::string shape_str = attr->n_dims < 1 ? "" : std::to_string(attr->dims[0]);
@@ -223,7 +247,7 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
     // 计算缩放比例/Calculate the scaling ratio
     float scale_w = (float)target_size.width / img.cols;
     float scale_h = (float)target_size.height / img.rows;
-
+    static TrackingSession *sess = CreateSession(2, 3, 0.01);
     // 图像缩放/Image scaling
     if (img_width != width || img_height != height)
     {
@@ -277,6 +301,9 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
                  box_conf_threshold, nms_threshold, pads, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 
     // 绘制框体/Draw the box
+    line(orig_img, cv::Point(0, 300), cv::Point(orig_img.cols, 300), cv::Scalar(0, 0, 255), 2);
+    cv::Rect o_rectangle(600, 100, 200, 150); // (x, y, width, height)
+    cv::rectangle(orig_img, o_rectangle, cv::Scalar(0, 0, 255), 2);
     char text[256];
     for (int i = 0; i < detect_result_group.count; i++)
     {
@@ -289,10 +316,86 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
         int y1 = det_result->box.top;
         int x2 = det_result->box.right;
         int y2 = det_result->box.bottom;
-        rectangle(orig_img, cv::Point(x1, y1), cv::Point(x2, y2), cv::Scalar(256, 0, 0, 256), 3);
-        putText(orig_img, text, cv::Point(x1, y1 + 12), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255));
+        // rectangle(orig_img, cv::Point(x1, y1), cv::Point(x2, y2), cv::Scalar(256, 0, 0, 256), 3);
+        // putText(orig_img, text, cv::Point(x1, y1 + 12), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255));
     }
 
+
+    // 生成 SORT 所需的格式
+    std::vector<DetectionBox> detections;
+    for (int i = 0; i < detect_result_group.count; i++)
+    {
+        detect_result_t *det_result = &(detect_result_group.results[i]);
+        if (det_result->prop * 100 >= box_conf_threshold) // 置信度过滤
+        {
+            DetectionBox detection;
+            detection.box = {det_result->box.left, det_result->box.top, 
+                             det_result->box.right - det_result->box.left, 
+                             det_result->box.bottom - det_result->box.top};
+            detection.score = det_result->prop;
+            // detection.class_id = 0; /* 适当的类 ID */;
+            detections.push_back(detection);
+        }
+    }
+
+    // 更新 TrackingSession
+    auto trks = sess->Update(detections);
+    // 绘制跟踪框
+    per_num = 0;
+    for (const auto& track : trks) {
+        int x1 = track.box.x;
+        int y1 = track.box.y;
+        int x2 = x1 + track.box.width;
+        int y2 = y1 + track.box.height;
+        cv::Scalar color((track.id * 123) % 256, (track.id * 456) % 256, (track.id * 789) % 256);
+        rectangle(orig_img, cv::Point(x1, y1), cv::Point(x2, y2), color, 1);
+
+        // 获取文本大小
+        std::string text = std::to_string(track.id);
+        int baseline = 0;
+        cv::Size textSize = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
+        textSize.width = std::max(textSize.width, static_cast<int>(track.box.width));
+
+        // 矩形的左上角和右下角坐标
+        cv::Point textOrigin(x1, y1); // 调整到文本上方
+        // cv::Point textOrigin(x1, y1 - textSize.height - 10); // 调整到文本上方
+        cv::Rect textRect(textOrigin, textSize);
+
+        // 绘制矩形背景
+        cv::rectangle(orig_img, textRect, color, cv::FILLED); // 填充矩形背景
+
+        // 绘制文本，调整位置使其居中
+        putText(orig_img, text, textOrigin + cv::Point(0, textSize.height), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255)); // 白色文本
+
+        int center_y = track.box.y + track.box.height / 2;
+        // 越线检测
+        if (previous_y_positions.size() > track.id) {
+            if (previous_y_positions[track.id] <= 300 && center_y > 300) {
+                // if (crossed_up.find(track.id) == crossed_up.end()) {
+                    count_up++;
+                //     crossed_up.insert(track.id); // 记录已越线 ID
+                // }
+            }
+            // Down crossing
+            else if (previous_y_positions[track.id] >= 300 && center_y < 300) {
+                // if (crossed_down.find(track.id) == crossed_down.end()) {
+                    count_down++;
+                //     crossed_down.insert(track.id); // 记录已越线 ID
+                // }
+            }
+        }
+        previous_y_positions[track.id] = center_y;
+        if (isPointInsideRectangle(o_rectangle, cv::Point(track.box.x + track.box.width / 2, track.box.y + track.box.height / 2))) {
+            per_num++;
+        }
+    }
+    // cv::rectangle(ori_img, track.box,  cv::Scalar(0, 255, 0), 2, 8, 0);                                                                                       
+    // putText(ori_img, std::to_string(track.id), cv::Point(track.box.x, track.box.y+ 12), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255, 0));
+    // 显示上行和下行人数
+    putText(orig_img, "Up through: " + std::to_string(count_up), cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+    putText(orig_img, "Down through: " + std::to_string(count_down), cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+    putText(orig_img, "Number of regions: " + std::to_string(per_num), cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+     
     ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
 
     return orig_img;

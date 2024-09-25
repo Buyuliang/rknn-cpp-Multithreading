@@ -38,12 +38,16 @@ set(CMAKE_INSTALL_RPATH "lib")
 
 # rknn_yolov5_demo
 include_directories( ${CMAKE_SOURCE_DIR}/include)
+include_directories( ${CMAKE_SOURCE_DIR}/sort)
 
 add_executable(rknn_yolov5_demo
         src/main.cc
         src/postprocess.cc
         src/preprocess.cc
         src/rkYolov5s.cc
+        sort/Hungarian.cc
+        sort/KalmanTracker.cc
+        sort/sort.cc
 )
 
 target_link_libraries(rknn_yolov5_demo

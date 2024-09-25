@@ -31,9 +31,9 @@ int main(int argc, char **argv)
 
     cv::namedWindow("Camera FPS");
     cv::VideoCapture capture;
-    if (strlen(vedio_name) == 1)
-        capture.open((int)(vedio_name[0] - '0'));
-    else
+    // if (strlen(vedio_name) == 1)
+    //     capture.open((int)(vedio_name[0] - '0'));
+    // else
         capture.open(vedio_name);
 
     struct timeval time;
@@ -50,7 +50,8 @@ int main(int argc, char **argv)
         if (testPool.put(img) != 0)
             break;
 
-        if (frames >= threadNum && testPool.get(img) != 0)
+        if (testPool.get(img) != 0)
+        // if (frames >= threadNum && testPool.get(img) != 0)
             break;
         cv::imshow("Camera FPS", img);
         if (cv::waitKey(1) == 'q') // 延时1毫秒,按q键退出/Press q to exit
