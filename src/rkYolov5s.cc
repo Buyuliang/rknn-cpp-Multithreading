@@ -301,9 +301,9 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
                  box_conf_threshold, nms_threshold, pads, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 
     // 绘制框体/Draw the box
-    line(orig_img, cv::Point(0, 300), cv::Point(orig_img.cols, 300), cv::Scalar(0, 0, 255), 2);
-    cv::Rect o_rectangle(600, 100, 200, 150); // (x, y, width, height)
-    cv::rectangle(orig_img, o_rectangle, cv::Scalar(0, 0, 255), 2);
+    // line(orig_img, cv::Point(0, 300), cv::Point(orig_img.cols, 300), cv::Scalar(0, 0, 255), 2);
+    // cv::Rect o_rectangle(600, 100, 200, 150); // (x, y, width, height)
+    // cv::rectangle(orig_img, o_rectangle, cv::Scalar(0, 0, 255), 2);
     char text[256];
     for (int i = 0; i < detect_result_group.count; i++)
     {
@@ -326,7 +326,7 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
     for (int i = 0; i < detect_result_group.count; i++)
     {
         detect_result_t *det_result = &(detect_result_group.results[i]);
-        if (det_result->prop * 100 >= box_conf_threshold) // 置信度过滤
+        if (det_result->prop * 100 >= box_conf_threshold && strcmp(det_result->name, "person") == 0) // 置信度过滤
         {
             DetectionBox detection;
             detection.box = {det_result->box.left, det_result->box.top, 
@@ -385,16 +385,16 @@ cv::Mat rkYolov5s::infer(cv::Mat &orig_img)
             }
         }
         previous_y_positions[track.id] = center_y;
-        if (isPointInsideRectangle(o_rectangle, cv::Point(track.box.x + track.box.width / 2, track.box.y + track.box.height / 2))) {
-            per_num++;
-        }
+        // if (isPointInsideRectangle(o_rectangle, cv::Point(track.box.x + track.box.width / 2, track.box.y + track.box.height / 2))) {
+        //     per_num++;
+        // }
     }
     // cv::rectangle(ori_img, track.box,  cv::Scalar(0, 255, 0), 2, 8, 0);                                                                                       
     // putText(ori_img, std::to_string(track.id), cv::Point(track.box.x, track.box.y+ 12), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255, 0));
     // 显示上行和下行人数
-    putText(orig_img, "Up through: " + std::to_string(count_up), cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
-    putText(orig_img, "Down through: " + std::to_string(count_down), cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
-    putText(orig_img, "Number of regions: " + std::to_string(per_num), cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+    // putText(orig_img, "Up through: " + std::to_string(count_up), cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+    // putText(orig_img, "Down through: " + std::to_string(count_down), cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
+    // putText(orig_img, "Number of regions: " + std::to_string(per_num), cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 255), 2);
      
     ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
 

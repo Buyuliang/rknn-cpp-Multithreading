@@ -21,12 +21,22 @@ HungarianAlgorithm::~HungarianAlgorithm(){}
 //********************************************************//
 double HungarianAlgorithm::Solve(vector<vector<double>>& DistMatrix, vector<int>& Assignment)
 {
+	double cost = 0.0;
+
+    if (DistMatrix.empty()) {
+        std::cerr << "Error: DistMatrix is empty." << std::endl;
+        return cost;
+    }
+
+    if (DistMatrix[0].empty()) {
+        std::cerr << "Error: The first row of DistMatrix is empty." << std::endl;
+        return cost;
+    }
+
 	unsigned int nRows = DistMatrix.size();
 	unsigned int nCols = DistMatrix[0].size();
-
 	double *distMatrixIn = new double[nRows * nCols];
 	int *assignment = new int[nRows];
-	double cost = 0.0;
 
 	// Fill in the distMatrixIn. Mind the index is "i + nRows * j".
 	// Here the cost matrix of size MxN is defined as a double precision array of N*M elements.

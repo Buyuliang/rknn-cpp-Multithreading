@@ -47,6 +47,8 @@ int main(int argc, char **argv)
         cv::Mat img;
         if (capture.read(img) == false)
             break;
+        // cv::resize(img, img, cv::Size(1920, 1080));
+        // cv::resize(img, img, cv::Size(640, 640));
         if (testPool.put(img) != 0)
             break;
 

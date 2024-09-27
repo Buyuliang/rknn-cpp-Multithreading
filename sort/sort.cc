@@ -67,53 +67,52 @@ static double compute_iou(cv::Rect_<float> bb_test, cv::Rect_<float> bb_gt)
     return (double)(intersection_area / union_area);
 }
 
-
 static void AssociateDetectionsToTrackers(const std::vector<DetectionBox> &dets, const std::vector<TrackingBox> &trks, float iou_threshold,
         std::vector<std::vector<int>> &matches, std::vector<int> &unmatched_detections, std::vector<int> &unmatched_trackers)
 {
     int det_num = dets.size();
     int trk_num = trks.size();
 
-    if(trk_num==0)
-    {
-        for(int i=0; i<det_num; i++)
+    if (trk_num == 0) {
+        for (int i = 0; i < det_num; i++)
             unmatched_detections.push_back(i);
         return;
     }
 
-    std::vector<std::vector<double>> iou_matrix;
-    iou_matrix .resize(det_num, vector<double>(trk_num, 0));
+    std::vector<std::vector<double>> iou_matrix(det_num, std::vector<double>(trk_num, 0));
 
-    for(int i=0; i<det_num; i++)
-        for(int j=0; j<trk_num; j++)
-            // use 1-iou because the hungarian algorithm computes a minimum-cost assignment.
+    for (int i = 0; i < det_num; i++)
+        for (int j = 0; j < trk_num; j++)
             iou_matrix[i][j] = 1 - compute_iou(dets[i].box, trks[j].box);
 
-    // solve the assignment problem using hungarian algorithm.
     HungarianAlgorithm hungalgo;
-    std::vector<int> assignment;
+    std::vector<int> assignment(det_num, -1);  // 初始化 assignment 大小
 
-    // the resulting assignment is [detection : tracker], with len=preNum
-    hungalgo.Solve(iou_matrix, assignment);
-
-    for(int i=0; i<det_num; i++)
-    {
-        int j = assignment[i];
-        // unassigned label will be set as -1 in the assignment algorithm
-        if((j != -1) && (1-iou_matrix[i][j] >= iou_threshold))
-        {
-            std::vector<int> match = {i, j};
-            matches.push_back(match);
-        }
-        else
-            unmatched_detections.push_back(i);
+    if (!hungalgo.Solve(iou_matrix, assignment)) {
+        std::cerr << "Error: Hungarian algorithm failed to solve." << std::endl;
+        return;
     }
 
-    for(int i=0; i<trk_num; i++)
-        for(int j=0; j<matches.size(); j++)
-            if(i != matches[j][1]) unmatched_trackers.push_back(i);
-}
+    for (int i = 0; i < det_num; i++) {
+        int j = assignment[i];
+        if ((j != -1) && (1 - iou_matrix[i][j] >= iou_threshold)) {
+            matches.push_back({i, j});
+        } else {
+            unmatched_detections.push_back(i);
+        }
+    }
 
+    std::vector<bool> matched_trackers(trk_num, false);
+    for (const auto &match : matches) {
+        matched_trackers[match[1]] = true;
+    }
+
+    for (int i = 0; i < trk_num; i++) {
+        if (!matched_trackers[i]) {
+            unmatched_trackers.push_back(i);
+        }
+    }
+}
 
 std::vector<TrackingBox> Sort::Update(const std::vector<DetectionBox> &dets)
 {
@@ -142,8 +141,13 @@ std::vector<TrackingBox> Sort::Update(const std::vector<DetectionBox> &dets)
     AssociateDetectionsToTrackers(dets, trks, m_iou_threshold, matches, unmatched_detections, unmatched_trackers);
 
     // update matched trackers with assigned detections.
-    for(auto &m : matches)
-        m_trackers[m[1]].Update(dets[m[0]].box);
+    for (const auto &m : matches) {
+        if (m[1] < m_trackers.size() && m[0] < dets.size()) {
+            m_trackers[m[1]].Update(dets[m[0]].box);
+        } else {
+            std::cerr << "Index out of bounds: m[0] = " << m[0] << ", m[1] = " << m[1] << std::endl;
+        }
+    }
 
     // create and initialise new trackers for unmatched detections
     for(auto &d : unmatched_detections)
